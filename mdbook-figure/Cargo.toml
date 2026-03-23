@@ -2,6 +2,11 @@
 name = "mdbook-figure"
 version = "0.1.0"
 edition = "2024"
+description = "a preprocessor that adds support for numbered figures in mdbook"
+license = "mit"
+authors = [ "Johannes Cornelis Draaijer <jcdra1@gmail.com>" ]
+documentation = "https://datdenkikniet.github.io/mdbook-xref/"
+repository = "https://github.com/datdenkikniet/mdbook-xref"
 
 [dependencies]
 anyhow.workspace = true
