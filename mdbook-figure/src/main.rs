@@ -163,7 +163,11 @@ r#"<div class="figure" id="{label}">
 
 {replacement_text}
 
-<p class="figure-caption">{description}</p>
+<div class="figure-caption">
+
+{description}
+
+</div>
 </div>
 
 [](label:{label} "{name}")

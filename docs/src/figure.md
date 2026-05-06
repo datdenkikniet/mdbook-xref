@@ -26,7 +26,7 @@ Defining figures is done as follows:
 
 ````
 ```figure a-label Optional Type
-The first line is the description of the figure
+The first line is the description of the figure, which **can** _contain_ `markdown`.
 <center>
 The rest describes its contents, which are rendered as
 
@@ -38,7 +38,7 @@ The rest describes its contents, which are rendered as
 which renders as
 
 ```figure a-label Optional Type
-The first line is the description of the figure
+The first line is the description of the figure, which **can** also _contain_ `markdown`.
 <center>
 The rest describes its contents, which are rendered as
 
