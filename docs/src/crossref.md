@@ -92,7 +92,7 @@ label defined in some `label` link.
 Normal inline links work as expected
 
 ```
-[A reference to the text.](label:text_without_supplement)
+[A reference to the text.](ref:text_without_supplement)
 ```
 
 renders as
