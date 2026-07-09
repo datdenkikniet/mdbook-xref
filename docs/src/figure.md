@@ -16,8 +16,9 @@ and add it to your `book.toml`:
 [book]
 
 [preprocessor.figure]
-# If you're also using `mdbook-xref`, you must use the correct ordering:
-before = [ "xref" ]
+# If you're also using `mdbook-xref` and/or `mdbook-abbr2`, you must use the
+# correct ordering for the both of them to work as expected:
+before = [ "xref", "abbr2" ]
 ```
 
 ## Defining figures
