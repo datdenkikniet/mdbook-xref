@@ -247,8 +247,11 @@ fn rewrite_refs(
             } else if let Some(supp) = &crossref.supplement {
                 supp.as_ref()
             } else {
-                eprintln!("Cross-reference had neither supplement nor text");
-                continue;
+                eprintln!(
+                    "Cross-reference `{}` has neither supplement nor text",
+                    link.url.0
+                );
+                link.url.0.as_ref()
             };
 
             let title = link.title.replace(r#"""#, r#"\""#);
