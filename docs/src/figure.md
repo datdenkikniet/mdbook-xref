@@ -27,7 +27,7 @@ Defining figures is done as follows:
 
 ````
 ```figure a-label Optional Type
-The first line is the description of the figure, which **can** _contain_ `markdown`.
+The first line is the description of the figure, which **can** _contain_ `markdown`, and is a hyperlink to the figure.
 <center>
 The rest describes its contents, which are rendered as
 
@@ -39,7 +39,7 @@ The rest describes its contents, which are rendered as
 which renders as
 
 ```figure a-label Optional Type
-The first line is the description of the figure, which **can** also _contain_ `markdown`.
+The first line is the description of the figure, which **can** _contain_ `markdown`, and is a hyperlink to the figure.
 <center>
 The rest describes its contents, which are rendered as
 
@@ -50,6 +50,8 @@ The rest describes its contents, which are rendered as
 The figures are numbered by type and order in the book.
 
 These figures can be referred to by their label using the `mdbook-xref` preprocessor. In this case, we can refer to [`ref:a-label`](ref:a-label), or <ref:a-table>.
+
+The caption itself also links to its figure, so that auto-navigatable links can be created easily without requiring other in-text references.
 
 ## Autodetection
 
@@ -80,4 +82,12 @@ and is referred to as <ref:a-table>
 
 ## Styling
 
-With the <abbr:HTML> renderer, figures are turned into `div` elements with the `figure` class. Additionally, the figure caption is inserted as a `p` element with the `figure-caption` class.
+With the <abbr:HTML> renderer, figures are turned into `div` elements with the `figure` class. Additionally, the figure caption is inserted as a `div` element with the `figure-caption` class.
+
+The clickable captions generally inherit `<a>` styling from the browser, which can look odd. Restyling those links is relatively straightforward:
+
+```css
+.figure-caption a {
+    color: inherit !important;
+}
+```
