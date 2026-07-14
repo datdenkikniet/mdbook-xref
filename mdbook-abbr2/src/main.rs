@@ -10,7 +10,6 @@ use mdbook_preprocessor::{
     book::{Book, BookItem, Chapter},
 };
 use pulldown_cmark::{Event, LinkType, Tag};
-
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
 
@@ -165,6 +164,8 @@ fn do_rewrite(
         _ => None,
     });
 
+    let mut encountered = HashSet::<String>::new();
+
     for chapter in chapters {
         let content = &chapter.content;
         let parser = pulldown_cmark::Parser::new(content).into_offset_iter();
@@ -201,9 +202,18 @@ fn do_rewrite(
                 .as_ref()
                 .unwrap_or_else(|| &abbr.expanded)
                 .replace(r#"""#, r#"\""#);
+
+            let exp: &String = abbr.hover.as_ref().unwrap_or(&abbr.expanded);
             let abbr = &abbr.abbreviation;
 
-            let link = format!(r#"[{abbr}](ref:abbr-{abbr} "{hover}")"#);
+            // first time expansion of abbreviation in chapter
+            let link = if encountered.contains(abbr) {
+                format!(r#"[{abbr}](ref:abbr-{abbr} "{hover}")"#)
+            } else {
+                format!(r#"[{exp} ({abbr})](ref:abbr-{abbr})"#)
+            };
+
+            encountered.insert(abbr.clone());
 
             let replacement = format!(r#"<span class="abbr">{link}</span>"#);
 
@@ -224,6 +234,9 @@ fn do_rewrite(
         chapter.content = output;
 
         do_rewrite(abbrs, used, &mut chapter.sub_items)?;
+
+        // Ensure the first of each abbr is expanded in each chapter
+        encountered.clear();
     }
     Ok(())
 }

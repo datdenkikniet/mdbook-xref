@@ -29,6 +29,9 @@ When writing a <abbr:CSV> file, make sure to escape double quotes with double qu
 Abbreviations expand to links in the abbreviations page, which is appended to the end of the book, with a separator.
 To disable the chapter separator, set the `preprocessor.abbr2.separator` configuration key to `false`.
 
+When referencing an abbreviation for the first time, it will be expanded to it's full meaning. All consecutive references
+to that abbreviation in a chapter will only display in short form. Example: 
+> <abbr:HTML> is a markup language for creating webpage structure. <abbr:HTML> can either be written pure, or with a framework.
 ## Getting started
 
 To get started, install the preprocessors:

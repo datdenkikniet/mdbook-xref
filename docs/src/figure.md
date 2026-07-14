@@ -80,4 +80,4 @@ and is referred to as <ref:a-table>
 
 ## Styling
 
-With the `html` renderer, figures are turned into `div` elements with the `figure` class. Additionally, the figure caption is inserted as a `p` element with the `figure-caption` class.
+With the <abbr:HTML> renderer, figures are turned into `div` elements with the `figure` class. Additionally, the figure caption is inserted as a `p` element with the `figure-caption` class.
