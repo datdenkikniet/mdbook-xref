@@ -1,15 +1,19 @@
 use std::{
     collections::{HashMap, HashSet},
     io::Write,
+    ops::Deref,
     path::PathBuf,
 };
+
+use serde::Deserialize;
 
 use anyhow::{Context, Result};
 use mdbook_preprocessor::{
     PreprocessorContext,
     book::{Book, BookItem, Chapter},
 };
-use pulldown_cmark::{Event, LinkType, Tag};
+use pulldown_cmark::{CowStr, Event, LinkType, Tag, TagEnd};
+
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
 
@@ -49,6 +53,15 @@ struct Abbreviation {
     pub abbreviation: String,
     pub expanded: String,
     pub hover: Option<String>,
+}
+
+#[derive(Default, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum ValidationMode {
+    Quiet,
+    #[default]
+    Warn,
+    Error,
 }
 
 fn rewrite_book(ctx: &PreprocessorContext, book: &mut Book) -> Result<()> {
@@ -100,7 +113,17 @@ fn rewrite_book(ctx: &PreprocessorContext, book: &mut Book) -> Result<()> {
 
     let mut used_abbreviations = HashSet::new();
 
-    do_rewrite(&abbreviations, &mut used_abbreviations, &mut book.items)?;
+    let validate: ValidationMode = ctx
+        .config
+        .get("preprocessor.abbr2.validate")?
+        .unwrap_or_default();
+
+    do_rewrite(
+        &abbreviations,
+        &mut used_abbreviations,
+        &mut book.items,
+        &validate,
+    )?;
 
     if !used_abbreviations.is_empty() {
         let separator = ctx
@@ -158,6 +181,7 @@ fn do_rewrite(
     abbrs: &HashMap<String, Abbreviation>,
     used: &mut HashSet<String>,
     items: &mut [BookItem],
+    validation_mode: &ValidationMode,
 ) -> Result<()> {
     let chapters = items.iter_mut().filter_map(|i| match i {
         BookItem::Chapter(c) => Some(c),
@@ -168,54 +192,62 @@ fn do_rewrite(
 
     for chapter in chapters {
         let content = &chapter.content;
-        let parser = pulldown_cmark::Parser::new(content).into_offset_iter();
+        let mut parser = pulldown_cmark::Parser::new(content).into_offset_iter();
 
         let mut replacements = Vec::new();
+        let mut dest_url: CowStr<'_>;
 
-        for (event, range) in parser {
-            let Event::Start(Tag::Link {
-                link_type: LinkType::Autolink,
-                dest_url,
-                ..
-            }) = event
-            else {
+        //for (event, range) in parser {
+        while let Some((event, range)) = parser.next() {
+            match &event {
+                Event::Start(Tag::Link {
+                    link_type: LinkType::Autolink,
+                    dest_url: url,
+                    ..
+                }) => {
+                    dest_url = url.clone();
+                }
+                // Consume code block to skip validation
+                Event::Start(Tag::CodeBlock(_)) => {
+                    while parser
+                        .next()
+                        .is_some_and(|(e, _)| e != Event::End(TagEnd::CodeBlock))
+                    {
+                        // pass
+                    }
+                    continue;
+                }
+                Event::Text(text) if *validation_mode != ValidationMode::Quiet => {
+                    let Some(err_word) = check_text(abbrs, &text.deref()) else {
+                        continue;
+                    };
+
+                    let msg = format!(
+                        "{} is recognized as an abbreviation, but not marked as such. Chapter {}, somewhere in {}",
+                        err_word, &chapter.name, &content[range],
+                    );
+
+                    match validation_mode {
+                        ValidationMode::Warn => eprintln!("Warning: {}", msg),
+                        ValidationMode::Error => anyhow::bail!(msg),
+                        _ => unreachable!(
+                            "Only Warn and Error should result in validation of abbreviations"
+                        ),
+                    }
+                    continue;
+                }
+                _ => continue,
+            };
+
+            let Some((mark_abbr, abbr)) = parse_abbreviation(&dest_url) else {
                 continue;
             };
 
-            let Some(abbr) = dest_url.strip_prefix("abbr:") else {
-                continue;
-            };
-
-            let (abbr, _form) = abbr
-                .rsplit_once(':')
-                .map(|(a, b)| (a, Some(b)))
-                .unwrap_or((abbr, None));
-
-            let Some(abbr) = abbrs.get(abbr) else {
-                anyhow::bail!("Unknown abbreviation '{abbr}' used ");
-            };
-
-            used.insert(abbr.abbreviation.clone());
-
-            let hover = abbr
-                .hover
-                .as_ref()
-                .unwrap_or_else(|| &abbr.expanded)
-                .replace(r#"""#, r#"\""#);
-
-            let exp: &String = abbr.hover.as_ref().unwrap_or(&abbr.expanded);
-            let abbr = &abbr.abbreviation;
-
-            // first time expansion of abbreviation in chapter
-            let link = if encountered.contains(abbr) {
-                format!(r#"[{abbr}](ref:abbr-{abbr} "{hover}")"#)
+            let replacement = if mark_abbr {
+                create_abbr_replacement(abbr, abbrs, used, &mut encountered)?
             } else {
-                format!(r#"[{exp} ({abbr})](ref:abbr-{abbr})"#)
+                abbr.to_string()
             };
-
-            encountered.insert(abbr.clone());
-
-            let replacement = format!(r#"<span class="abbr">{link}</span>"#);
 
             replacements.push((range, replacement));
         }
@@ -233,10 +265,63 @@ fn do_rewrite(
 
         chapter.content = output;
 
-        do_rewrite(abbrs, used, &mut chapter.sub_items)?;
+        do_rewrite(abbrs, used, &mut chapter.sub_items, validation_mode)?;
 
         // Ensure the first of each abbr is expanded in each chapter
         encountered.clear();
     }
     Ok(())
+}
+
+fn create_abbr_replacement(
+    abbr: &str,
+    abbrs: &HashMap<String, Abbreviation>,
+    used: &mut HashSet<String>,
+    encountered: &mut HashSet<String>,
+) -> Result<String, anyhow::Error> {
+    let (abbr, _form) = abbr
+        .rsplit_once(':')
+        .map(|(a, b)| (a, Some(b)))
+        .unwrap_or((abbr, None));
+
+    let Some(abbr) = abbrs.get(abbr) else {
+        anyhow::bail!("Unknown abbreviation '{abbr}' used ")
+    };
+
+    used.insert(abbr.abbreviation.clone());
+
+    let hover = abbr
+        .hover
+        .as_ref()
+        .unwrap_or_else(|| &abbr.expanded)
+        .replace(r#"""#, r#"\""#);
+
+    let exp: &String = abbr.hover.as_ref().unwrap_or(&abbr.expanded);
+    let abbr = &abbr.abbreviation;
+
+    // first time expansion of abbreviation in chapter
+    let link = if encountered.contains(abbr) {
+        format!(r#"[{abbr}](ref:abbr-{abbr} "{hover}")"#)
+    } else {
+        format!(r#"[{exp} ({abbr})](ref:abbr-{abbr})"#)
+    };
+
+    encountered.insert(abbr.clone());
+
+    Ok(format!(r#"<span class="abbr">{link}</span>"#))
+}
+
+fn parse_abbreviation<'a>(dest_url: &'a CowStr<'a>) -> Option<(bool, &'a str)> {
+    if let Some(rest) = dest_url.strip_prefix("abbr:") {
+        Some((true, rest))
+    } else if let Some(rest) = dest_url.strip_prefix("noabbr:") {
+        Some((false, rest))
+    } else {
+        None
+    }
+}
+fn check_text<'a>(abbrs: &HashMap<String, Abbreviation>, text: &'a str) -> Option<&'a str> {
+    text.split_whitespace()
+        .map(|word| word.trim_matches(|c: char| c.is_ascii_punctuation()))
+        .find(|word| abbrs.contains_key(*word))
 }
