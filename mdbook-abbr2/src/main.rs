@@ -64,6 +64,11 @@ enum ValidationMode {
     Error,
 }
 
+struct Configuration {
+    pub auto_expand: bool,
+    pub validation_mode: ValidationMode,
+}
+
 fn rewrite_book(ctx: &PreprocessorContext, book: &mut Book) -> Result<()> {
     let abbr_path: PathBuf = ctx
         .config
@@ -113,16 +118,22 @@ fn rewrite_book(ctx: &PreprocessorContext, book: &mut Book) -> Result<()> {
 
     let mut used_abbreviations = HashSet::new();
 
-    let validate: ValidationMode = ctx
-        .config
-        .get("preprocessor.abbr2.validate")?
-        .unwrap_or_default();
+    let config = Configuration {
+        auto_expand: ctx
+            .config
+            .get("preprocessor.abbr2.auto-expand")?
+            .unwrap_or(true),
+        validation_mode: ctx
+            .config
+            .get("preprocessor.abbr2.validate")?
+            .unwrap_or_default(),
+    };
 
     do_rewrite(
         &abbreviations,
         &mut used_abbreviations,
         &mut book.items,
-        &validate,
+        &config,
     )?;
 
     if !used_abbreviations.is_empty() {
@@ -181,7 +192,7 @@ fn do_rewrite(
     abbrs: &HashMap<String, Abbreviation>,
     used: &mut HashSet<String>,
     items: &mut [BookItem],
-    validation_mode: &ValidationMode,
+    config: &Configuration,
 ) -> Result<()> {
     let chapters = items.iter_mut().filter_map(|i| match i {
         BookItem::Chapter(c) => Some(c),
@@ -217,7 +228,7 @@ fn do_rewrite(
                     }
                     continue;
                 }
-                Event::Text(text) if *validation_mode != ValidationMode::Quiet => {
+                Event::Text(text) if config.validation_mode != ValidationMode::Quiet => {
                     let Some(err_word) = check_text(abbrs, &text.deref()) else {
                         continue;
                     };
@@ -227,7 +238,7 @@ fn do_rewrite(
                         err_word, &chapter.name, &content[range],
                     );
 
-                    match validation_mode {
+                    match config.validation_mode {
                         ValidationMode::Warn => eprintln!("Warning: {}", msg),
                         ValidationMode::Error => anyhow::bail!(msg),
                         _ => unreachable!(
@@ -244,7 +255,7 @@ fn do_rewrite(
             };
 
             let replacement = if mark_abbr {
-                create_abbr_replacement(abbr, abbrs, used, &mut encountered)?
+                create_abbr_replacement(abbr, abbrs, used, &mut encountered, config)?
             } else {
                 abbr.to_string()
             };
@@ -265,7 +276,7 @@ fn do_rewrite(
 
         chapter.content = output;
 
-        do_rewrite(abbrs, used, &mut chapter.sub_items, validation_mode)?;
+        do_rewrite(abbrs, used, &mut chapter.sub_items, config)?;
 
         // Ensure the first of each abbr is expanded in each chapter
         encountered.clear();
@@ -278,6 +289,7 @@ fn create_abbr_replacement(
     abbrs: &HashMap<String, Abbreviation>,
     used: &mut HashSet<String>,
     encountered: &mut HashSet<String>,
+    config: &Configuration,
 ) -> Result<String, anyhow::Error> {
     let (abbr, _form) = abbr
         .rsplit_once(':')
@@ -300,7 +312,7 @@ fn create_abbr_replacement(
     let abbr = &abbr.abbreviation;
 
     // first time expansion of abbreviation in chapter
-    let link = if encountered.contains(abbr) {
+    let link = if !config.auto_expand || encountered.contains(abbr) {
         format!(r#"[{abbr}](ref:abbr-{abbr} "{hover}")"#)
     } else {
         format!(r#"[{exp} ({abbr})](ref:abbr-{abbr})"#)

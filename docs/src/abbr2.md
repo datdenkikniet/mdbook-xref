@@ -3,6 +3,9 @@
 This preprocessor, in combination with the `mdbook-xref` preprocessor, provides simple abbreviation
 support for your mdBook.
 
+The abbreviations will be automatically expanded like `Comma Separated Value (CSV)` for the first encounter in each
+chapter. To disable this auto-expansion, set the `preprocessor.abbr2.auto-expand` configuration key to `false` in your `book.toml`.
+
 Abbreviations are defined in a <abbr:CSV> file (whose path is configured using the `preprocessor.abbr2.path` configuration key
 in your `book.toml`) in the following format:
 
@@ -41,7 +44,7 @@ By default, the `preprocessor.abbr2.validate` configuration key is set to `warn`
 set the `preprocessor.abbr2.validate` configuration key to `quiet`. To enable the preprocessor producing
 errors, set the `preprocessor.abbr2.validate` configuration key to `error`.
 
-All non-marked words will be cross-referenced against the active lists of abbreviations. If any word is found in the list that isn't markedwarn
+All non-marked words will be cross-referenced against the active lists of abbreviations. If any word is found in the list that isn't marked
 the preprocessor will produce an error, and try its best to explain where and why it failed.
 
 The check will not consider text within code blocks.
