@@ -98,9 +98,19 @@ fn rewrite_book(ctx: &PreprocessorContext, book: &mut Book) -> Result<()> {
         }
     }
 
+    let auto_expand = ctx
+        .config
+        .get("preprocessor.abbr2.auto-expand")?
+        .unwrap_or(false);
+
     let mut used_abbreviations = HashSet::new();
 
-    do_rewrite(&abbreviations, &mut used_abbreviations, &mut book.items)?;
+    do_rewrite(
+        &abbreviations,
+        &mut used_abbreviations,
+        &mut book.items,
+        auto_expand,
+    )?;
 
     if !used_abbreviations.is_empty() {
         let separator = ctx
@@ -158,6 +168,7 @@ fn do_rewrite(
     abbrs: &HashMap<String, Abbreviation>,
     used: &mut HashSet<String>,
     items: &mut [BookItem],
+    auto_expand: bool,
 ) -> Result<()> {
     let chapters = items.iter_mut().filter_map(|i| match i {
         BookItem::Chapter(c) => Some(c),
@@ -207,10 +218,10 @@ fn do_rewrite(
             let abbr = &abbr.abbreviation;
 
             // first time expansion of abbreviation in chapter
-            let link = if encountered.contains(abbr) {
-                format!(r#"[{abbr}](ref:abbr-{abbr} "{hover}")"#)
-            } else {
+            let link = if auto_expand && !encountered.contains(abbr) {
                 format!(r#"[{exp} ({abbr})](ref:abbr-{abbr})"#)
+            } else {
+                format!(r#"[{abbr}](ref:abbr-{abbr} "{hover}")"#)
             };
 
             encountered.insert(abbr.clone());
@@ -233,7 +244,7 @@ fn do_rewrite(
 
         chapter.content = output;
 
-        do_rewrite(abbrs, used, &mut chapter.sub_items)?;
+        do_rewrite(abbrs, used, &mut chapter.sub_items, auto_expand)?;
 
         // Ensure the first of each abbr is expanded in each chapter
         encountered.clear();

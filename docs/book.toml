@@ -15,6 +15,7 @@ before = ["xref"]
 command = "cargo run -p mdbook-abbr2"
 path = "abbreviations.csv"
 separator = true
+auto-expand = true
 
 [output.html]
 additional-css = ["style.css"]
