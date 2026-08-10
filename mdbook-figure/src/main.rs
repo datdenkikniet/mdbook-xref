@@ -156,7 +156,10 @@ fn number_figures(items: &mut [BookItem], counters: &mut HashMap<String, usize>)
                 name.clone()
             };
 
-            let description = format!("<a href=\"#{label}\">\n\n{description}]\n\n</a>", label = figure.label);
+            let description = format!(
+                "<a href=\"#{label}\">\n\n{description}\n\n</a>",
+                label = figure.label
+            );
 
             #[rustfmt::skip]
             writeln!(
