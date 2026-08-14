@@ -12,7 +12,7 @@ use mdbook_preprocessor::{
     PreprocessorContext,
     book::{Book, BookItem, Chapter},
 };
-use pulldown_cmark::{CowStr, Event, LinkType, Tag, TagEnd};
+use pulldown_cmark::{CowStr, Event, LinkType, OffsetIter, Tag, TagEnd};
 
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
@@ -188,6 +188,14 @@ fn make_abbr_chapter(abbrs: &HashMap<String, Abbreviation>, used: &HashSet<Strin
     chapter
 }
 
+/// Skip through event types that we do not care about
+fn skip_event(parser: &mut OffsetIter<'_>, end_type: TagEnd) {
+    while parser
+        .next()
+        .is_some_and(|(e, _)| e != Event::End(end_type))
+    {}
+}
+
 fn do_rewrite(
     abbrs: &HashMap<String, Abbreviation>,
     used: &mut HashSet<String>,
@@ -218,14 +226,13 @@ fn do_rewrite(
                 }) => {
                     dest_url = url.clone();
                 }
+                Event::Start(Tag::Link { .. }) => {
+                    skip_event(&mut parser, TagEnd::Link);
+                    continue;
+                }
                 // Consume code block to skip validation
                 Event::Start(Tag::CodeBlock(_)) => {
-                    while parser
-                        .next()
-                        .is_some_and(|(e, _)| e != Event::End(TagEnd::CodeBlock))
-                    {
-                        // pass
-                    }
+                    skip_event(&mut parser, TagEnd::CodeBlock);
                     continue;
                 }
                 Event::Text(text) if config.validation_mode != ValidationMode::Quiet => {
