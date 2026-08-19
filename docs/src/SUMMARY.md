@@ -2,3 +2,6 @@
     - [Cross page links](./cross_page.md)
 - [`mdbook-figure`](./figure.md)
 - [`mdbook-abbr2`](./abbr2.md)
+- [some file](another_chapter/some_file.md)
+- [another_file](another_chapter/another_file.md)
+- [info](another_chapter/more_subchapters/iniifor.md)

@@ -82,7 +82,7 @@ and is referred to as <ref:a-table>
 
 ## Styling
 
-With the <abbr:HTML> renderer, figures are turned into `div` elements with the `figure` class. Additionally, the figure caption is inserted as a `div` element with the `figure-caption` class.
+With the HTML renderer, figures are turned into `div` elements with the `figure` class. Additionally, the figure caption is inserted as a `div` element with the `figure-caption` class.
 
 The clickable captions generally inherit `<a>` styling from the browser, which can look odd. Restyling those links is relatively straightforward:
 

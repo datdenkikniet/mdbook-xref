@@ -44,6 +44,10 @@ By default, the `preprocessor.abbr2.validate` configuration key is set to `warn`
 set the `preprocessor.abbr2.validate` configuration key to `quiet`. To enable the preprocessor producing
 errors, set the `preprocessor.abbr2.validate` configuration key to `error`.
 
+It is possible to exclude chapters from being validated. To do so, add the chapter's path as an entry to the `preprocessor.abbr2.exclude-chapter`
+configuration key list. It is also possible to exclude directories by adding the directory's path
+to the configuration key. Note that the path should be relative to `SUMMARY.md`. The preprocessor will notify of all skipped chapters.
+
 All non-marked words will be cross-referenced against the active lists of abbreviations. If any word is found in the list that isn't marked
 the preprocessor will produce an error, and try its best to explain where and why it failed.
 

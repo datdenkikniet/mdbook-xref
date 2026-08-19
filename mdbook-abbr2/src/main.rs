@@ -101,6 +101,7 @@ impl Diagnostics {
 struct Configuration {
     pub auto_expand: bool,
     pub validation: Option<Severity>,
+    pub excluded_chapters: HashSet<PathBuf>,
 }
 
 fn rewrite_book(ctx: &PreprocessorContext, book: &mut Book) -> Result<()> {
@@ -167,6 +168,10 @@ fn rewrite_book(ctx: &PreprocessorContext, book: &mut Book) -> Result<()> {
             ValidationMode::Warn => Some(Severity::Warning),
             ValidationMode::Error => Some(Severity::Error),
         },
+        excluded_chapters: ctx
+            .config
+            .get("preprocessor.abbr2.exclude-chapters")?
+            .unwrap_or_default(),
     };
 
     let mut diagnostics = Diagnostics::default();
@@ -241,6 +246,13 @@ fn skip_event(parser: &mut OffsetIter<'_>, end_type: TagEnd) {
     {}
 }
 
+fn print_chapter_info(chapter: &Chapter) -> String {
+    match chapter.path.as_ref() {
+        Some(path) => path.display().to_string(),
+        None => chapter.name.clone(),
+    }
+}
+
 fn do_rewrite(
     abbrs: &HashMap<String, Abbreviation>,
     used: &mut HashSet<String>,
@@ -257,6 +269,17 @@ fn do_rewrite(
 
     for chapter in chapters {
         let content = &chapter.content;
+
+        // Check if chapter is marked for skipping
+        if chapter
+            .path
+            .as_ref()
+            .is_some_and(|p| config.excluded_chapters.iter().any(|e| p.starts_with(e)))
+        {
+            eprintln!("Skipping chapter {}", print_chapter_info(chapter));
+            continue;
+        }
+
         let mut parser = pulldown_cmark::Parser::new(content).into_offset_iter();
 
         let mut replacements = Vec::new();
@@ -292,7 +315,7 @@ fn do_rewrite(
                             format!(
                                 "{} is recognized as an abbreviation, but not marked as such. Chapter {}, somewhere in {}",
                                 err_word,
-                                &chapter.name,
+                                print_chapter_info(chapter),
                                 &content[range.clone()],
                             ),
                         );

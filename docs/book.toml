@@ -1,7 +1,11 @@
 [book]
 
 [build]
-extra-watch-dirs = ["../mdbook-xref/src/", "../mdbook-figure/src/", "../mdbook-abbr2/src"]
+extra-watch-dirs = [
+  "../mdbook-xref/src/",
+  "../mdbook-figure/src/",
+  "../mdbook-abbr2/src",
+]
 
 [preprocessor.xref]
 command = "cargo run -p mdbook-xref"
@@ -15,8 +19,10 @@ before = ["xref"]
 command = "cargo run -p mdbook-abbr2"
 path = "abbreviations.csv"
 separator = true
-validate = "warn"
+validate = "error"
 auto-expand = true
+exclude-chapters = ['figure.md', "another_chapter/more_subchapters"]
+
 
 [output.html]
 additional-css = ["style.css"]
