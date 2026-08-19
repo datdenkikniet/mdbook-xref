@@ -17,7 +17,7 @@ use pulldown_cmark::{CowStr, Event, LinkType, OffsetIter, Tag, TagEnd};
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
 
-    let command = args.get(0);
+    let command = args.first();
 
     match command.as_ref().map(|v| v.as_str()) {
         Some("supports") => {
@@ -25,13 +25,13 @@ fn main() -> Result<()> {
                 .get(1)
                 .context("missing 2nd argument specifying backend")?;
 
-            return if backend == "html" {
+            if backend == "html" {
                 Ok(())
             } else {
                 Err(anyhow::anyhow!("{backend} backend is not supported."))
-            };
+            }
         }
-        Some(_) => return Err(anyhow::anyhow!("Unknown command")),
+        Some(_) => Err(anyhow::anyhow!("Unknown command")),
         _ => {
             let book = book()?;
             std::io::stdout().write_all(book.as_bytes())?;
@@ -102,15 +102,39 @@ struct Configuration {
     pub auto_expand: bool,
     pub validation: Option<Severity>,
     pub excluded_chapters: HashSet<PathBuf>,
+    pub abbr_path: PathBuf,
+}
+
+fn create_config(ctx: &PreprocessorContext) -> Result<Configuration, anyhow::Error> {
+    let context = &ctx.config;
+
+    let validation_mode: ValidationMode = ctx
+        .config
+        .get("preprocessor.abbr2.validate")?
+        .unwrap_or_default();
+
+    Ok(Configuration {
+        auto_expand: context
+            .get("preprocessor.abbr2.auto-expand")?
+            .unwrap_or(true),
+        validation: match validation_mode {
+            ValidationMode::Quiet => None,
+            ValidationMode::Warn => Some(Severity::Warning),
+            ValidationMode::Error => Some(Severity::Error),
+        },
+        excluded_chapters: context
+            .get("preprocessor.abbr2.exclude-chapters")?
+            .unwrap_or_default(),
+        abbr_path: context
+            .get("preprocessor.abbr2.path")?
+            .context("No abbreviations path configured.")?,
+    })
 }
 
 fn rewrite_book(ctx: &PreprocessorContext, book: &mut Book) -> Result<()> {
-    let abbr_path: PathBuf = ctx
-        .config
-        .get("preprocessor.abbr2.path")?
-        .context("No abbreviations path configured.")?;
+    let config = create_config(ctx)?;
 
-    let abbr_path = ctx.root.join(abbr_path);
+    let abbr_path = ctx.root.join(&config.abbr_path);
     let data = std::fs::read(&abbr_path)
         .with_context(|| format!("Failed to read abbreviations file {}", abbr_path.display()))?;
 
@@ -153,27 +177,6 @@ fn rewrite_book(ctx: &PreprocessorContext, book: &mut Book) -> Result<()> {
 
     let mut used_abbreviations = HashSet::new();
 
-    let validation_mode: ValidationMode = ctx
-        .config
-        .get("preprocessor.abbr2.validate")?
-        .unwrap_or_default();
-
-    let config = Configuration {
-        auto_expand: ctx
-            .config
-            .get("preprocessor.abbr2.auto-expand")?
-            .unwrap_or(true),
-        validation: match validation_mode {
-            ValidationMode::Quiet => None,
-            ValidationMode::Warn => Some(Severity::Warning),
-            ValidationMode::Error => Some(Severity::Error),
-        },
-        excluded_chapters: ctx
-            .config
-            .get("preprocessor.abbr2.exclude-chapters")?
-            .unwrap_or_default(),
-    };
-
     let mut diagnostics = Diagnostics::default();
 
     do_rewrite(
@@ -196,7 +199,7 @@ fn rewrite_book(ctx: &PreprocessorContext, book: &mut Book) -> Result<()> {
             book.items.push(BookItem::Separator);
         }
 
-        let chapter = make_abbr_chapter(&abbreviations, &mut used_abbreviations);
+        let chapter = make_abbr_chapter(&abbreviations, &used_abbreviations);
 
         book.items.push(BookItem::Chapter(chapter));
     }
@@ -207,7 +210,7 @@ fn rewrite_book(ctx: &PreprocessorContext, book: &mut Book) -> Result<()> {
 fn make_abbr_chapter(abbrs: &HashMap<String, Abbreviation>, used: &HashSet<String>) -> Chapter {
     let mut page = String::new();
 
-    let mut used = used.into_iter().collect::<Vec<_>>();
+    let mut used = used.iter().collect::<Vec<_>>();
     used.sort();
 
     page.push_str(
@@ -225,7 +228,7 @@ fn make_abbr_chapter(abbrs: &HashMap<String, Abbreviation>, used: &HashSet<Strin
         page.push('\n');
     }
 
-    let chapter = Chapter {
+    Chapter {
         name: "Abbreviations".into(),
         content: page,
         number: None,
@@ -233,9 +236,7 @@ fn make_abbr_chapter(abbrs: &HashMap<String, Abbreviation>, used: &HashSet<Strin
         path: Some("abbreviations.md".into()),
         source_path: None,
         parent_names: Default::default(),
-    };
-
-    chapter
+    }
 }
 
 /// Skip through event types that we do not care about
@@ -260,15 +261,13 @@ fn do_rewrite(
     config: &Configuration,
     diagnostics: &mut Diagnostics,
 ) {
-    let chapters = items.iter_mut().filter_map(|i| match i {
-        BookItem::Chapter(c) => Some(c),
-        _ => None,
-    });
-
     let mut encountered = HashSet::<String>::new();
 
-    for chapter in chapters {
-        let content = &chapter.content;
+    for item in items {
+        let chapter = match item {
+            BookItem::Chapter(c) => c,
+            _ => continue,
+        };
 
         // Check if chapter is marked for skipping
         if chapter
@@ -279,6 +278,8 @@ fn do_rewrite(
             eprintln!("Skipping chapter {}", print_chapter_info(chapter));
             continue;
         }
+
+        let content = &chapter.content;
 
         let mut parser = pulldown_cmark::Parser::new(content).into_offset_iter();
 
@@ -394,7 +395,7 @@ fn create_abbr_replacement(
     let hover = abbr
         .hover
         .as_ref()
-        .unwrap_or_else(|| &abbr.expanded)
+        .unwrap_or(&abbr.expanded)
         .replace(r#"""#, r#"\""#);
 
     let exp: &String = abbr.hover.as_ref().unwrap_or(&abbr.expanded);

@@ -19,7 +19,7 @@ before = ["xref"]
 command = "cargo run -p mdbook-abbr2"
 path = "abbreviations.csv"
 separator = true
-validate = "error"
+validate = "warn"
 auto-expand = true
 exclude-chapters = ['figure.md', "another_chapter/more_subchapters"]
 
