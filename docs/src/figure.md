@@ -49,7 +49,7 @@ The rest describes its contents, which are rendered as
 
 The figures are numbered by type and order in the book.
 
-These figures can be referred to by their label using the `mdbook-xref` preprocessor. In this case, we can refer to [`ref:a-label`](ref:a-label), or <ref:a-table>.
+These figures can be referred to by their label using the `mdbook-xref` preprocessor. In this case, we can refer to [`ref:a-label`](ref:a-label), or <ref:a-label>.
 
 The caption itself also links to its figure, so that auto-navigatable links can be created easily without requiring other in-text references.
 
