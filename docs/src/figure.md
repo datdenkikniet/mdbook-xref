@@ -27,7 +27,7 @@ Defining figures is done as follows:
 
 ````
 ```figure a-label Optional Type
-The first line is the description of the figure, which **can** _contain_ `markdown`, and is a hyperlink to the figure.
+The first line is the description of the figure, which **can** _contain_ `markdown`, and is a hyperlink to the figure. The description can also contain <abbr:ABBR>s that expand correctly.
 <center>
 The rest describes its contents, which are rendered as
 
@@ -39,7 +39,7 @@ The rest describes its contents, which are rendered as
 which renders as
 
 ```figure a-label Optional Type
-The first line is the description of the figure, which **can** _contain_ `markdown`, and is a hyperlink to the figure.
+The first line is the description of the figure, which **can** _contain_ `markdown`, and is a hyperlink to the figure. The description can also contain <abbr:ABBR>s that expand correctly.
 <center>
 The rest describes its contents, which are rendered as
 

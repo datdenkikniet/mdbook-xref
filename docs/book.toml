@@ -7,7 +7,7 @@ extra-watch-dirs = ["../mdbook-xref/src/", "../mdbook-figure/src/", "../mdbook-a
 command = "cargo run -p mdbook-xref"
 
 [preprocessor.figure]
-before = ["xref"]
+before = ["xref", "abbr2"]
 command = "cargo run -p mdbook-figure"
 
 [preprocessor.abbr2]

@@ -150,16 +150,14 @@ fn number_figures(items: &mut [BookItem], counters: &mut HashMap<String, usize>)
             last_copied = figure.input_range.end;
 
             let name = format!("{ty} {counter}", ty = figure.ty);
+            let name_link = format!("<a href=\"#{label}\">{name}</a>", label = figure.label);
             let description = if let Some(description) = figure.description {
-                format!("{name}: {description}")
+                format!("{name_link}: {description}")
             } else {
-                name.clone()
+                name_link
             };
 
-            let description = format!(
-                "<a href=\"#{label}\">\n\n{description}\n\n</a>",
-                label = figure.label
-            );
+            let description = format!("\n\n{description}\n\n");
 
             #[rustfmt::skip]
             writeln!(
