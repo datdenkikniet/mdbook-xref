@@ -55,7 +55,7 @@ struct Abbreviation {
     pub hover: Option<String>,
 }
 
-#[derive(Default, Deserialize, PartialEq)]
+#[derive(Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum ValidationMode {
     Quiet,
@@ -64,9 +64,43 @@ enum ValidationMode {
     Error,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum Severity {
+    Warning,
+    Error,
+}
+
+#[derive(Default)]
+struct Diagnostics(Vec<(Severity, String)>);
+
+impl Diagnostics {
+    fn push(&mut self, severity: Severity, message: String) {
+        self.0.push((severity, message));
+    }
+
+    /// Print every diagnostic, failing if any of them is an error.
+    fn report(&self) -> Result<()> {
+        for (severity, message) in &self.0 {
+            match severity {
+                Severity::Warning => eprintln!("Warning: {message}"),
+                Severity::Error => eprintln!("Error: {message}"),
+            }
+        }
+
+        let errors = self.0.iter().filter(|(s, _)| *s == Severity::Error).count();
+
+        if errors > 0 {
+            let plural = if errors == 1 { "" } else { "s" };
+            anyhow::bail!("aborting due to {errors} previous error{plural}");
+        }
+
+        Ok(())
+    }
+}
+
 struct Configuration {
     pub auto_expand: bool,
-    pub validation_mode: ValidationMode,
+    pub validation: Option<Severity>,
 }
 
 fn rewrite_book(ctx: &PreprocessorContext, book: &mut Book) -> Result<()> {
@@ -118,23 +152,34 @@ fn rewrite_book(ctx: &PreprocessorContext, book: &mut Book) -> Result<()> {
 
     let mut used_abbreviations = HashSet::new();
 
+    let validation_mode: ValidationMode = ctx
+        .config
+        .get("preprocessor.abbr2.validate")?
+        .unwrap_or_default();
+
     let config = Configuration {
         auto_expand: ctx
             .config
             .get("preprocessor.abbr2.auto-expand")?
             .unwrap_or(true),
-        validation_mode: ctx
-            .config
-            .get("preprocessor.abbr2.validate")?
-            .unwrap_or_default(),
+        validation: match validation_mode {
+            ValidationMode::Quiet => None,
+            ValidationMode::Warn => Some(Severity::Warning),
+            ValidationMode::Error => Some(Severity::Error),
+        },
     };
+
+    let mut diagnostics = Diagnostics::default();
 
     do_rewrite(
         &abbreviations,
         &mut used_abbreviations,
         &mut book.items,
         &config,
-    )?;
+        &mut diagnostics,
+    );
+
+    diagnostics.report()?;
 
     if !used_abbreviations.is_empty() {
         let separator = ctx
@@ -201,7 +246,8 @@ fn do_rewrite(
     used: &mut HashSet<String>,
     items: &mut [BookItem],
     config: &Configuration,
-) -> Result<()> {
+    diagnostics: &mut Diagnostics,
+) {
     let chapters = items.iter_mut().filter_map(|i| match i {
         BookItem::Chapter(c) => Some(c),
         _ => None,
@@ -235,22 +281,21 @@ fn do_rewrite(
                     skip_event(&mut parser, TagEnd::CodeBlock);
                     continue;
                 }
-                Event::Text(text) if config.validation_mode != ValidationMode::Quiet => {
-                    let Some(err_word) = check_text(abbrs, &text.deref()) else {
+                Event::Text(text) => {
+                    let Some(severity) = config.validation else {
                         continue;
                     };
 
-                    let msg = format!(
-                        "{} is recognized as an abbreviation, but not marked as such. Chapter {}, somewhere in {}",
-                        err_word, &chapter.name, &content[range],
-                    );
-
-                    match config.validation_mode {
-                        ValidationMode::Warn => eprintln!("Warning: {}", msg),
-                        ValidationMode::Error => anyhow::bail!(msg),
-                        _ => unreachable!(
-                            "Only Warn and Error should result in validation of abbreviations"
-                        ),
+                    for err_word in check_text(abbrs, text.deref()) {
+                        diagnostics.push(
+                            severity,
+                            format!(
+                                "{} is recognized as an abbreviation, but not marked as such. Chapter {}, somewhere in {}",
+                                err_word,
+                                &chapter.name,
+                                &content[range.clone()],
+                            ),
+                        );
                     }
                     continue;
                 }
@@ -262,7 +307,17 @@ fn do_rewrite(
             };
 
             let replacement = if mark_abbr {
-                create_abbr_replacement(abbr, abbrs, used, &mut encountered, config)?
+                let Some(replacement) = create_abbr_replacement(
+                    abbr,
+                    abbrs,
+                    used,
+                    &mut encountered,
+                    config,
+                    diagnostics,
+                ) else {
+                    continue;
+                };
+                replacement
             } else {
                 abbr.to_string()
             };
@@ -283,12 +338,11 @@ fn do_rewrite(
 
         chapter.content = output;
 
-        do_rewrite(abbrs, used, &mut chapter.sub_items, config)?;
+        do_rewrite(abbrs, used, &mut chapter.sub_items, config, diagnostics);
 
         // Ensure the first of each abbr is expanded in each chapter
         encountered.clear();
     }
-    Ok(())
 }
 
 fn create_abbr_replacement(
@@ -297,14 +351,19 @@ fn create_abbr_replacement(
     used: &mut HashSet<String>,
     encountered: &mut HashSet<String>,
     config: &Configuration,
-) -> Result<String, anyhow::Error> {
+    diagnostics: &mut Diagnostics,
+) -> Option<String> {
     let (abbr, _form) = abbr
         .rsplit_once(':')
         .map(|(a, b)| (a, Some(b)))
         .unwrap_or((abbr, None));
 
     let Some(abbr) = abbrs.get(abbr) else {
-        anyhow::bail!("Unknown abbreviation '{abbr}' used ")
+        diagnostics.push(
+            Severity::Error,
+            format!("Unknown abbreviation '{abbr}' used"),
+        );
+        return None;
     };
 
     used.insert(abbr.abbreviation.clone());
@@ -327,7 +386,7 @@ fn create_abbr_replacement(
 
     encountered.insert(abbr.clone());
 
-    Ok(format!(r#"<span class="abbr">{link}</span>"#))
+    Some(format!(r#"<span class="abbr">{link}</span>"#))
 }
 
 fn parse_abbreviation<'a>(dest_url: &'a CowStr<'a>) -> Option<(bool, &'a str)> {
@@ -339,8 +398,11 @@ fn parse_abbreviation<'a>(dest_url: &'a CowStr<'a>) -> Option<(bool, &'a str)> {
         None
     }
 }
-fn check_text<'a>(abbrs: &HashMap<String, Abbreviation>, text: &'a str) -> Option<&'a str> {
+fn check_text<'a>(
+    abbrs: &'a HashMap<String, Abbreviation>,
+    text: &'a str,
+) -> impl Iterator<Item = &'a str> {
     text.split_whitespace()
         .map(|word| word.trim_matches(|c: char| c.is_ascii_punctuation()))
-        .find(|word| abbrs.contains_key(*word))
+        .filter(|word| abbrs.contains_key(*word))
 }
