@@ -9,7 +9,7 @@ use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
 
-    let command = args.get(0);
+    let command = args.first();
 
     let output = match command.as_ref().map(|v| v.as_str()) {
         Some("supports") => {
@@ -58,7 +58,7 @@ fn number_figures(items: &mut [BookItem], counters: &mut HashMap<String, usize>)
 
     for chapter in chapters {
         let content = &chapter.content;
-        let mut parser = Parser::new(&content).into_offset_iter();
+        let mut parser = Parser::new(content).into_offset_iter();
 
         let mut rewrites = Vec::new();
         while let Some((next, range)) = parser.next() {
@@ -83,7 +83,7 @@ fn number_figures(items: &mut [BookItem], counters: &mut HashMap<String, usize>)
                 );
             };
 
-            let ty = data.get(0);
+            let ty = data.first();
 
             let (mut current, mut current_range) = parser.next().unwrap();
             let start = current_range.start;

@@ -8,7 +8,7 @@ use mdbook_xref::CrossrefPreprocessor;
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
 
-    let command = args.get(0);
+    let command = args.first();
 
     let output = match command.as_ref().map(|v| v.as_str()) {
         Some("supports") => {
