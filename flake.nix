@@ -23,7 +23,7 @@
           };
           rustToolchain = pkgs.fenix.fromToolchainFile {
             dir = ./.;
-            sha256 = "sha256-zC8E38iDVJ1oPIzCqTk/Ujo9+9kx9dXq7wAwPMpkpg0=";
+            sha256 = "sha256-zm3dyIY2T414ZRR3EhLOvptzG6gta4WZUcawzMUWtqI=";
           };
           rustPlatform = pkgs.makeRustPlatform {
             cargo = rustToolchain;
