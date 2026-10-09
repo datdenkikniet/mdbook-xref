@@ -240,11 +240,36 @@ fn make_abbr_chapter(abbrs: &HashMap<String, Abbreviation>, used: &HashSet<Strin
 }
 
 /// Skip through event types that we do not care about
-fn skip_event(parser: &mut OffsetIter<'_>, end_type: TagEnd) {
-    while parser
-        .next()
-        .is_some_and(|(e, _)| e != Event::End(end_type))
-    {}
+fn skip_event(
+    parser: &mut OffsetIter<'_>,
+    end_type: TagEnd,
+    mut error_ctx: Option<(&str, &mut Diagnostics)>,
+) {
+    while let Some((evt, _)) = parser.next() {
+        if evt == Event::End(end_type) {
+            break;
+        }
+
+        if let Some((error_ctx, diag)) = error_ctx.as_mut()
+            && let Event::Start(Tag::Link {
+                link_type: LinkType::Autolink,
+                dest_url,
+                ..
+            }) = evt
+        {
+            let Some((mark_abbr, abbr)) = parse_abbreviation(&dest_url) else {
+                continue;
+            };
+
+            if mark_abbr {
+                let msg = format!(
+                    "Encountered abbreviation link '{}' in {} which is not allowed",
+                    abbr, error_ctx
+                );
+                diag.push(Severity::Error, msg);
+            }
+        }
+    }
 }
 
 fn print_chapter_info(chapter: &Chapter) -> String {
@@ -286,7 +311,6 @@ fn do_rewrite(
         let mut replacements = Vec::new();
         let mut dest_url: CowStr<'_>;
 
-        //for (event, range) in parser {
         while let Some((event, range)) = parser.next() {
             match &event {
                 Event::Start(Tag::Link {
@@ -297,12 +321,20 @@ fn do_rewrite(
                     dest_url = url.clone();
                 }
                 Event::Start(Tag::Link { .. }) => {
-                    skip_event(&mut parser, TagEnd::Link);
+                    skip_event(&mut parser, TagEnd::Link, Some(("link", diagnostics)));
+                    continue;
+                }
+                Event::Start(Tag::Heading { level, .. }) => {
+                    skip_event(
+                        &mut parser,
+                        TagEnd::Heading(*level),
+                        Some(("heading", diagnostics)),
+                    );
                     continue;
                 }
                 // Consume code block to skip validation
                 Event::Start(Tag::CodeBlock(_)) => {
-                    skip_event(&mut parser, TagEnd::CodeBlock);
+                    skip_event(&mut parser, TagEnd::CodeBlock, None);
                     continue;
                 }
                 Event::Text(text) => {
