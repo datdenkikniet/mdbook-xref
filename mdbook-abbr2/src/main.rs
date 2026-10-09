@@ -12,7 +12,7 @@ use mdbook_preprocessor::{
     PreprocessorContext,
     book::{Book, BookItem, Chapter},
 };
-use pulldown_cmark::{CowStr, Event, LinkType, OffsetIter, Tag, TagEnd};
+use pulldown_cmark::{Event, LinkType, OffsetIter, Tag, TagEnd};
 
 fn main() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
@@ -240,42 +240,43 @@ fn make_abbr_chapter(abbrs: &HashMap<String, Abbreviation>, used: &HashSet<Strin
 }
 
 /// Skip through event types that we do not care about
-fn skip_event(
-    parser: &mut OffsetIter<'_>,
-    end_type: TagEnd,
-    mut error_ctx: Option<(&str, &mut Diagnostics)>,
-) {
-    while let Some((evt, _)) = parser.next() {
-        if evt == Event::End(end_type) {
-            break;
-        }
-
-        if let Some((error_ctx, diag)) = error_ctx.as_mut()
-            && let Event::Start(Tag::Link {
-                link_type: LinkType::Autolink,
-                dest_url,
-                ..
-            }) = evt
-        {
-            let Some((mark_abbr, abbr)) = parse_abbreviation(&dest_url) else {
-                continue;
-            };
-
-            if mark_abbr {
-                let msg = format!(
-                    "Encountered abbreviation link '{}' in {} which is not allowed",
-                    abbr, error_ctx
-                );
-                diag.push(Severity::Error, msg);
-            }
-        }
-    }
-}
 
 fn print_chapter_info(chapter: &Chapter) -> String {
     match chapter.path.as_ref() {
         Some(path) => path.display().to_string(),
         None => chapter.name.clone(),
+    }
+}
+
+struct Parser<'text, 'diag> {
+    iter: OffsetIter<'text>,
+    diagnostics: &'diag mut Diagnostics,
+    chapter: &'diag Chapter,
+}
+
+impl<'text, 'diag> Parser<'text, 'diag> {
+    fn next(&mut self) -> Option<(Event<'text>, std::ops::Range<usize>)> {
+        self.iter.next()
+    }
+
+    fn skip_event(&mut self, end_type: TagEnd, error_ctx: Option<&str>) {
+        while let Some((evt, _)) = self.iter.next() {
+            if evt == Event::End(end_type) {
+                break;
+            }
+
+            if let Some(error_ctx) = error_ctx
+                && let Some((mark_abbr, abbr)) = parse_abbreviation(&evt)
+            {
+                if mark_abbr {
+                    let chap = print_chapter_info(self.chapter);
+                    let msg = format!(
+                        "Encountered abbreviation link '{abbr}' in a(n) {error_ctx} in chapter '{chap}' which is not allowed",
+                    );
+                    self.diagnostics.push(Severity::Error, msg);
+                }
+            }
+        }
     }
 }
 
@@ -306,35 +307,29 @@ fn do_rewrite(
 
         let content = &chapter.content;
 
-        let mut parser = pulldown_cmark::Parser::new(content).into_offset_iter();
+        let iter = pulldown_cmark::Parser::new(content).into_offset_iter();
+        let mut parser = Parser {
+            iter,
+            diagnostics,
+            chapter,
+        };
 
         let mut replacements = Vec::new();
-        let mut dest_url: CowStr<'_>;
 
         while let Some((event, range)) = parser.next() {
-            match &event {
-                Event::Start(Tag::Link {
-                    link_type: LinkType::Autolink,
-                    dest_url: url,
-                    ..
-                }) => {
-                    dest_url = url.clone();
-                }
+            let (mark_abbr, abbr) = match &event {
+                v if let Some(abbr) = parse_abbreviation(v) => abbr,
                 Event::Start(Tag::Link { .. }) => {
-                    skip_event(&mut parser, TagEnd::Link, Some(("link", diagnostics)));
+                    parser.skip_event(TagEnd::Link, Some("link"));
                     continue;
                 }
                 Event::Start(Tag::Heading { level, .. }) => {
-                    skip_event(
-                        &mut parser,
-                        TagEnd::Heading(*level),
-                        Some(("heading", diagnostics)),
-                    );
+                    parser.skip_event(TagEnd::Heading(*level), Some("heading"));
                     continue;
                 }
                 // Consume code block to skip validation
                 Event::Start(Tag::CodeBlock(_)) => {
-                    skip_event(&mut parser, TagEnd::CodeBlock, None);
+                    parser.skip_event(TagEnd::CodeBlock, None);
                     continue;
                 }
                 Event::Text(text) => {
@@ -343,7 +338,7 @@ fn do_rewrite(
                     };
 
                     for err_word in check_text(abbrs, text.deref()) {
-                        diagnostics.push(
+                        parser.diagnostics.push(
                             severity,
                             format!(
                                 "{} is recognized as an abbreviation, but not marked as such. Chapter {}, somewhere in {}",
@@ -358,10 +353,6 @@ fn do_rewrite(
                 _ => continue,
             };
 
-            let Some((mark_abbr, abbr)) = parse_abbreviation(&dest_url) else {
-                continue;
-            };
-
             let replacement = if mark_abbr {
                 let Some(replacement) = create_abbr_replacement(
                     abbr,
@@ -369,7 +360,7 @@ fn do_rewrite(
                     used,
                     &mut encountered,
                     config,
-                    diagnostics,
+                    parser.diagnostics,
                 ) else {
                     continue;
                 };
@@ -445,7 +436,16 @@ fn create_abbr_replacement(
     Some(format!(r#"<span class="abbr">{link}</span>"#))
 }
 
-fn parse_abbreviation<'a>(dest_url: &'a CowStr<'a>) -> Option<(bool, &'a str)> {
+fn parse_abbreviation<'a>(event: &'a Event<'a>) -> Option<(bool, &'a str)> {
+    let Event::Start(Tag::Link {
+        link_type: LinkType::Autolink,
+        dest_url,
+        ..
+    }) = event
+    else {
+        return None;
+    };
+
     if let Some(rest) = dest_url.strip_prefix("abbr:") {
         Some((true, rest))
     } else if let Some(rest) = dest_url.strip_prefix("noabbr:") {
